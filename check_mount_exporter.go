@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -56,20 +54,6 @@ func sliceContains(slice []string, str string) bool {
 		}
 	}
 	return false
-}
-
-func (c *Config) LoadConfig(configFile string) error {
-	yamlFile, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		log.Errorf("Error reading config file: %s", err)
-		return err
-	}
-	if err := yaml.Unmarshal(yamlFile, c); err != nil {
-		log.Errorf("Error parsing config file: %s", err)
-		return err
-	}
-	log.Infof("Loaded config file %s mounts %d", configFile, len(c.mountpoints))
-	return nil
 }
 
 func (c *Config) ParseFSTab() error {
