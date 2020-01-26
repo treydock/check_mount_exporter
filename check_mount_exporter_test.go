@@ -8,25 +8,37 @@ import (
 func TestCollect(t *testing.T) {
 	procMounts = "/tmp/proc-mounts"
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
-/dev/mapper/vg-lv_home /home ext4 rw,noatime 0 0
+/dev/mapper/vg-lv_home /home ext4 ro,noatime 0 0
 /dev/mapper/vg-lv_var /var ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_tmp /tmp ext4 rw,noatime 0 0
 `
 	filet.File(t, "/tmp/proc-mounts", mockedProcMounts)
 	defer filet.CleanUp(t)
-	config := &Config{mountpoints: []string{"/var", "/dne"}}
+	config := &Config{mountpoints: []string{"/var", "/home", "/dne"}}
 	exporter := NewExporter(config)
 	metrics, err := exporter.collect()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 	}
-	if len(metrics) != 2 {
-		t.Errorf("Unexpected length of metrics, expected 2 got %d", len(metrics))
+	if len(metrics) != 3 {
+		t.Errorf("Unexpected length of metrics, expected 3 got %d", len(metrics))
 	}
 	if val := metrics[0].status; val != 1 {
 		t.Errorf("Unexpected status, got %v", val)
 	}
-	if val := metrics[1].status; val != 0 {
+	if val := metrics[0].rw; val != "rw" {
+		t.Errorf("Unexpected status, got %v", val)
+	}
+	if val := metrics[1].status; val != 1 {
+		t.Errorf("Unexpected status, got %v", val)
+	}
+	if val := metrics[1].rw; val != "ro" {
+		t.Errorf("Unexpected status, got %v", val)
+	}
+	if val := metrics[2].status; val != 0 {
+		t.Errorf("Unexpected status, got %v", val)
+	}
+	if val := metrics[2].rw; val != "" {
 		t.Errorf("Unexpected status, got %v", val)
 	}
 }

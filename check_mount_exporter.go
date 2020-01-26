@@ -31,6 +31,7 @@ type Config struct {
 type CheckMountMetric struct {
 	mountpoint string
 	status     float64
+	rw         string
 }
 
 type Exporter struct {
@@ -76,13 +77,15 @@ func (c *Config) ParseFSTab() error {
 func NewExporter(c *Config) *Exporter {
 	return &Exporter{
 		config:  c,
-		status:  prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint"}, nil),
+		status:  prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
 		success: prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
 	}
 }
 
 func (e *Exporter) collect() ([]CheckMountMetric, error) {
 	var mountpoints []string
+	var mountpointsRW []string
+	var mountpointsRO []string
 	var metrics []CheckMountMetric
 	if e.config.mountpoints == nil {
 		if err := e.config.ParseFSTab(); err != nil {
@@ -96,16 +99,29 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 	}
 	for _, mount := range mounts.Mounts {
 		mountpoints = append(mountpoints, mount.MountPoint)
+		if strings.Contains(mount.Options, "rw,") {
+			mountpointsRW = append(mountpointsRW, mount.MountPoint)
+		} else if strings.Contains(mount.Options, "ro,") {
+			mountpointsRO = append(mountpointsRO, mount.MountPoint)
+		}
 	}
 	for _, m := range e.config.mountpoints {
 		mounted := sliceContains(mountpoints, m)
+		var rw_value string
+		rw := sliceContains(mountpointsRW, m)
+		ro := sliceContains(mountpointsRO, m)
 		var status float64
 		if mounted {
 			status = 1
 		} else {
 			status = 0
 		}
-		metric := CheckMountMetric{mountpoint: m, status: status}
+		if rw {
+			rw_value = "rw"
+		} else if ro {
+			rw_value = "ro"
+		}
+		metric := CheckMountMetric{mountpoint: m, status: status, rw: rw_value}
 		metrics = append(metrics, metric)
 	}
 	return metrics, nil
@@ -124,7 +140,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(e.success, prometheus.GaugeValue, 1)
 	}
 	for _, m := range metrics {
-		ch <- prometheus.MustNewConstMetric(e.status, prometheus.GaugeValue, m.status, m.mountpoint)
+		ch <- prometheus.MustNewConstMetric(e.status, prometheus.GaugeValue, m.status, m.mountpoint, m.rw)
 	}
 }
 
