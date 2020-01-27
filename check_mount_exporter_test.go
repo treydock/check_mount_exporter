@@ -19,7 +19,8 @@ import (
 )
 
 func TestCollect(t *testing.T) {
-	procMounts = "/tmp/proc-mounts"
+	procMounts := "/tmp/proc-mounts"
+	configProcMounts = &procMounts
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_home /home ext4 ro,noatime 0 0
 /dev/mapper/vg-lv_var /var ext4 rw,noatime 0 0
@@ -32,6 +33,7 @@ func TestCollect(t *testing.T) {
 	metrics, err := exporter.collect()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
+		return
 	}
 	if len(metrics) != 3 {
 		t.Errorf("Unexpected length of metrics, expected 3 got %d", len(metrics))
@@ -57,7 +59,8 @@ func TestCollect(t *testing.T) {
 }
 
 func TestParseFSTab(t *testing.T) {
-	fstabPath = "/tmp/fstab"
+	fstabPath := "/tmp/fstab"
+	configFstabPath = &fstabPath
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
 PARTUUID=6c586e13-01  /boot           vfat    defaults          0       2
 PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
@@ -72,6 +75,7 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 	err := config.ParseFSTab()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
+		return
 	}
 	if val := len(config.mountpoints); val != 7 {
 		t.Errorf("Unexpected number of mountpoints: %d", val)
