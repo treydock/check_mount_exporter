@@ -182,6 +182,7 @@ func main() {
 	prometheus.MustRegister(exporter)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		//nolint:errcheck
 		w.Write([]byte(`<html>
              <head><title>check_mount Exporter</title></head>
              <body>
