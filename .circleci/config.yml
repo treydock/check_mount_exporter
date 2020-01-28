@@ -33,6 +33,13 @@ jobs:
     - store_artifacts:
         path: .build
         destination: /build
+    - run: 
+        command: |
+          if [ -n "$CIRCLE_TAG" ]; then
+            make docker DOCKER_IMAGE_TAG=$CIRCLE_TAG
+          else
+            make docker
+          fi
   release:
     executor: golang
     steps:
@@ -43,6 +50,11 @@ jobs:
     - store_artifacts:
         destination: releases
         path: .tarballs
+    - prometheus/publish_release_images:
+        login_variable: DOCKER_LOGIN
+        organization: prom
+        password_variable: DOCKER_PASSWORD
+        registry: docker.io
 workflows:
   version: 2
   check_mount_exporter:
