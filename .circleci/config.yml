@@ -40,7 +40,21 @@ jobs:
           else
             make docker
           fi
-  release:
+  publish_master:
+    executor: golang
+    steps:
+    - prometheus/setup_build_environment
+    - prometheus/publish_release_images:
+        login_variable: DOCKER_LOGIN
+        organization: treydock
+        password_variable: DOCKER_PASSWORD
+        registry: docker.io
+    - prometheus/publish_release_images:
+        login_variable: QUAY_LOGIN
+        organization: treydock
+        password_variable: QUAY_PASSWORD
+        registry: quay.io
+  publish_release:
     executor: golang
     steps:
     - prometheus/setup_build_environment
@@ -52,9 +66,14 @@ jobs:
         path: .tarballs
     - prometheus/publish_release_images:
         login_variable: DOCKER_LOGIN
-        organization: prom
+        organization: treydock
         password_variable: DOCKER_PASSWORD
         registry: docker.io
+    - prometheus/publish_release_images:
+        login_variable: QUAY_LOGIN
+        organization: treydock
+        password_variable: QUAY_PASSWORD
+        registry: quay.io
 workflows:
   version: 2
   check_mount_exporter:
@@ -67,7 +86,15 @@ workflows:
         filters:
           tags:
             only: /.*/
-    - release:
+    - publish_master:
+        context: org-context
+        requires:
+        - test
+        - build
+        filters:
+          branches:
+            only: master
+    - publish_release:
         context: org-context
         requires:
         - test
