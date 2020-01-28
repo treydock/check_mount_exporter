@@ -42,8 +42,6 @@ jobs:
           fi
   publish_master:
     executor: golang
-    environment:
-      CIRCLE_TAG: master
     steps:
     - prometheus/setup_build_environment
     - prometheus/publish_release_images:
