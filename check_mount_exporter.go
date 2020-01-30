@@ -30,17 +30,19 @@ import (
 )
 
 const (
-	defExclude = "^/(dev|proc|sys|var/lib/docker/.+)($|/)"
+	defExcludeMountpoints = "^/(dev|proc|sys|var/lib/docker/.+)($|/)"
+	defExcludeFSTypes     = "^(proc|procfs|sysfs|swap)$"
 )
 
 var (
-	defProcMounts     = "/proc/mounts"
-	defFstabPath      = "/etc/fstab"
-	configMountpoints = kingpin.Flag("config.mountpoints", "Comma separated list of mountpoints to check").Default("").String()
-	configExclude     = kingpin.Flag("config.exclude", "Regex of mountpoints to exclude").Default(defExclude).String()
-	pathProcMounts    = kingpin.Flag("path.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
-	pathFstabPath     = kingpin.Flag("path.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
-	listenAddress     = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
+	defProcMounts            = "/proc/mounts"
+	defFstabPath             = "/etc/fstab"
+	configMountpoints        = kingpin.Flag("config.mountpoints", "Comma separated list of mountpoints to check").Default("").String()
+	configExcludeMountpoints = kingpin.Flag("config.exclude.mountpoints", "Regex of mountpoints to exclude").Default(defExcludeMountpoints).String()
+	configExcludeFSTypes     = kingpin.Flag("config.exclude.fs-types", "Regex of filesystem types to exclude").Default(defExcludeFSTypes).String()
+	pathProcMounts           = kingpin.Flag("path.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
+	pathFstabPath            = kingpin.Flag("path.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
+	listenAddress            = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
 )
 
 type CheckMountMetric struct {
@@ -50,10 +52,11 @@ type CheckMountMetric struct {
 }
 
 type Exporter struct {
-	mountpoints    []string
-	excludePattern *regexp.Regexp
-	status         *prometheus.Desc
-	success        *prometheus.Desc
+	mountpoints               []string
+	excludeMountpointsPattern *regexp.Regexp
+	excludeFSTypesPattern     *regexp.Regexp
+	status                    *prometheus.Desc
+	success                   *prometheus.Desc
 }
 
 func fileExists(filename string) bool {
@@ -74,12 +77,14 @@ func sliceContains(slice []string, str string) bool {
 }
 
 func NewExporter(mountpoints []string) *Exporter {
-	excludePattern := regexp.MustCompile(*configExclude)
+	excludeMountpointsPattern := regexp.MustCompile(*configExcludeMountpoints)
+	excludeFSTypesPattern := regexp.MustCompile(*configExcludeFSTypes)
 	return &Exporter{
-		mountpoints:    mountpoints,
-		excludePattern: excludePattern,
-		status:         prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
-		success:        prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
+		mountpoints:               mountpoints,
+		excludeMountpointsPattern: excludeMountpointsPattern,
+		excludeFSTypesPattern:     excludeFSTypesPattern,
+		status:                    prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
+		success:                   prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
 	}
 }
 
@@ -93,7 +98,7 @@ func (e *Exporter) ParseFSTab() ([]string, error) {
 		return nil, err
 	}
 	for _, m := range mounts {
-		if e.excludePattern.MatchString(m.File) {
+		if e.excludeMountpointsPattern.MatchString(m.File) || e.excludeFSTypesPattern.MatchString(m.VfsType) {
 			log.Debugf("Ignoring mount point %s", m.File)
 			continue
 		}

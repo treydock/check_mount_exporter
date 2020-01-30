@@ -68,7 +68,8 @@ func TestParseFSTab(t *testing.T) {
 	fstabPath := "/tmp/fstab"
 	pathFstabPath = &fstabPath
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
-PARTUUID=6c586e13-01  /boot           vfat    defaults          0       2
+LABEL=swap      swap    swap    defaults        0       0
+PARTUUID=6c586e13-01  /boot           ext3    defaults          0       2
 PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 /dev/vg/lv_var       /var            ext4    defaults,noatime 0 0
 /dev/vg/lv_puppet    /etc/puppet     ext4    defaults,noatime 0 0
