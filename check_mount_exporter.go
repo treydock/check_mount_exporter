@@ -33,8 +33,8 @@ var (
 	defFstabPath      = "/etc/fstab"
 	configMountpoints = kingpin.Flag("config.mountpoints", "Comma separated list of mountpoints to check").Default("").String()
 	configExclude     = kingpin.Flag("config.exclude", "Comma separated list of mountpoints to exclude").Default("").String()
-	configProcMounts  = kingpin.Flag("config.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
-	configFstabPath   = kingpin.Flag("config.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
+	pathProcMounts    = kingpin.Flag("path.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
+	pathFstabPath     = kingpin.Flag("path.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
 	listenAddress     = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
 )
 
@@ -73,10 +73,10 @@ func sliceContains(slice []string, str string) bool {
 }
 
 func (c *Config) ParseFSTab() error {
-	if exists := fileExists(*configFstabPath); !exists {
-		return fmt.Errorf("%s does not exist", *configFstabPath)
+	if exists := fileExists(*pathFstabPath); !exists {
+		return fmt.Errorf("%s does not exist", *pathFstabPath)
 	}
-	mounts, err := fstab.ParseFile(*configFstabPath)
+	mounts, err := fstab.ParseFile(*pathFstabPath)
 	if err != nil {
 		return err
 	}
@@ -104,11 +104,11 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 	var metrics []CheckMountMetric
 	if e.config.mountpoints == nil {
 		if err := e.config.ParseFSTab(); err != nil {
-			return nil, fmt.Errorf("Unable to load from fstab at %s: %s", *configFstabPath, err.Error())
+			return nil, fmt.Errorf("Unable to load from fstab at %s: %s", *pathFstabPath, err.Error())
 		}
 	}
 	log.Debugf("Collecting mountpoints: %v", e.config.mountpoints)
-	mounts, err := linuxproc.ReadMounts(*configProcMounts)
+	mounts, err := linuxproc.ReadMounts(*pathProcMounts)
 	if err != nil {
 		return nil, err
 	}

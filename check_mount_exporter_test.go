@@ -20,7 +20,7 @@ import (
 
 func TestCollect(t *testing.T) {
 	procMounts := "/tmp/proc-mounts"
-	configProcMounts = &procMounts
+	pathProcMounts = &procMounts
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_home /home ext4 ro,noatime 0 0
 /dev/mapper/vg-lv_var /var ext4 rw,noatime 0 0
@@ -60,7 +60,7 @@ func TestCollect(t *testing.T) {
 
 func TestParseFSTab(t *testing.T) {
 	fstabPath := "/tmp/fstab"
-	configFstabPath = &fstabPath
+	pathFstabPath = &fstabPath
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
 PARTUUID=6c586e13-01  /boot           vfat    defaults          0       2
 PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
