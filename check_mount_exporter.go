@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	linuxproc "github.com/c9s/goprocinfo/linux"
@@ -28,20 +29,19 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+const (
+	defExclude = "^/(dev|proc|sys|var/lib/docker/.+)($|/)"
+)
+
 var (
 	defProcMounts     = "/proc/mounts"
 	defFstabPath      = "/etc/fstab"
 	configMountpoints = kingpin.Flag("config.mountpoints", "Comma separated list of mountpoints to check").Default("").String()
-	configExclude     = kingpin.Flag("config.exclude", "Comma separated list of mountpoints to exclude").Default("").String()
+	configExclude     = kingpin.Flag("config.exclude", "Regex of mountpoints to exclude").Default(defExclude).String()
 	pathProcMounts    = kingpin.Flag("path.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
 	pathFstabPath     = kingpin.Flag("path.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
 	listenAddress     = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
 )
-
-type Config struct {
-	mountpoints []string
-	exclude     []string
-}
 
 type CheckMountMetric struct {
 	mountpoint string
@@ -50,9 +50,10 @@ type CheckMountMetric struct {
 }
 
 type Exporter struct {
-	config  *Config
-	status  *prometheus.Desc
-	success *prometheus.Desc
+	mountpoints    []string
+	excludePattern *regexp.Regexp
+	status         *prometheus.Desc
+	success        *prometheus.Desc
 }
 
 func fileExists(filename string) bool {
@@ -72,29 +73,33 @@ func sliceContains(slice []string, str string) bool {
 	return false
 }
 
-func (c *Config) ParseFSTab() error {
+func NewExporter(mountpoints []string) *Exporter {
+	excludePattern := regexp.MustCompile(*configExclude)
+	return &Exporter{
+		mountpoints:    mountpoints,
+		excludePattern: excludePattern,
+		status:         prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
+		success:        prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
+	}
+}
+
+func (e *Exporter) ParseFSTab() ([]string, error) {
+	var mountpoints []string
 	if exists := fileExists(*pathFstabPath); !exists {
-		return fmt.Errorf("%s does not exist", *pathFstabPath)
+		return nil, fmt.Errorf("%s does not exist", *pathFstabPath)
 	}
 	mounts, err := fstab.ParseFile(*pathFstabPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, m := range mounts {
-		if sliceContains(c.exclude, m.File) {
+		if e.excludePattern.MatchString(m.File) {
+			log.Debugf("Ignoring mount point %s", m.File)
 			continue
 		}
-		c.mountpoints = append(c.mountpoints, m.File)
+		mountpoints = append(mountpoints, m.File)
 	}
-	return nil
-}
-
-func NewExporter(c *Config) *Exporter {
-	return &Exporter{
-		config:  c,
-		status:  prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
-		success: prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
-	}
+	return mountpoints, nil
 }
 
 func (e *Exporter) collect() ([]CheckMountMetric, error) {
@@ -102,12 +107,14 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 	var mountpointsRW []string
 	var mountpointsRO []string
 	var metrics []CheckMountMetric
-	if e.config.mountpoints == nil {
-		if err := e.config.ParseFSTab(); err != nil {
+	if e.mountpoints == nil {
+		if mountpoints, err := e.ParseFSTab(); err != nil {
 			return nil, fmt.Errorf("Unable to load from fstab at %s: %s", *pathFstabPath, err.Error())
+		} else {
+			e.mountpoints = mountpoints
 		}
 	}
-	log.Debugf("Collecting mountpoints: %v", e.config.mountpoints)
+	log.Debugf("Collecting mountpoints: %v", e.mountpoints)
 	mounts, err := linuxproc.ReadMounts(*pathProcMounts)
 	if err != nil {
 		return nil, err
@@ -120,12 +127,12 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 			mountpointsRO = append(mountpointsRO, mount.MountPoint)
 		}
 	}
-	for _, m := range e.config.mountpoints {
-		mounted := sliceContains(mountpoints, m)
+	for _, m := range e.mountpoints {
 		var rw_value string
+		var status float64
+		mounted := sliceContains(mountpoints, m)
 		rw := sliceContains(mountpointsRW, m)
 		ro := sliceContains(mountpointsRO, m)
-		var status float64
 		if mounted {
 			status = 1
 		} else {
@@ -170,17 +177,12 @@ func main() {
 	log.Infoln("Build context", version.BuildContext())
 	log.Infoln("Starting Server:", *listenAddress)
 
-	config := &Config{}
+	var mountpoints []string
 	if *configMountpoints != "" {
-		mountpoints := strings.Split(*configMountpoints, ",")
-		config.mountpoints = mountpoints
-	}
-	if *configExclude != "" {
-		exclude := strings.Split(*configExclude, ",")
-		config.exclude = exclude
+		mountpoints = strings.Split(*configMountpoints, ",")
 	}
 
-	exporter := NewExporter(config)
+	exporter := NewExporter(mountpoints)
 	prometheus.MustRegister(exporter)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

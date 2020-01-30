@@ -15,10 +15,14 @@ package main
 
 import (
 	"github.com/Flaque/filet"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	"testing"
 )
 
 func TestCollect(t *testing.T) {
+	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
+		t.Fatal(err)
+	}
 	procMounts := "/tmp/proc-mounts"
 	pathProcMounts = &procMounts
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
@@ -28,8 +32,7 @@ func TestCollect(t *testing.T) {
 `
 	filet.File(t, "/tmp/proc-mounts", mockedProcMounts)
 	defer filet.CleanUp(t)
-	config := &Config{mountpoints: []string{"/var", "/home", "/dne"}}
-	exporter := NewExporter(config)
+	exporter := NewExporter([]string{"/var", "/home", "/dne"})
 	metrics, err := exporter.collect()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -59,6 +62,9 @@ func TestCollect(t *testing.T) {
 }
 
 func TestParseFSTab(t *testing.T) {
+	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
+		t.Fatal(err)
+	}
 	fstabPath := "/tmp/fstab"
 	pathFstabPath = &fstabPath
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
@@ -71,13 +77,13 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 `
 	filet.File(t, "/tmp/fstab", mocked_fstab)
 	defer filet.CleanUp(t)
-	config := &Config{}
-	err := config.ParseFSTab()
+	exporter := NewExporter(nil)
+	mountpoints, err := exporter.ParseFSTab()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
 		return
 	}
-	if val := len(config.mountpoints); val != 7 {
+	if val := len(mountpoints); val != 6 {
 		t.Errorf("Unexpected number of mountpoints: %d", val)
 	}
 }
