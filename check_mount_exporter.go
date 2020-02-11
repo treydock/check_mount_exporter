@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -35,13 +36,11 @@ const (
 )
 
 var (
-	defProcMounts            = "/proc/mounts"
-	defFstabPath             = "/etc/fstab"
+	defRootfs                = "/"
 	configMountpoints        = kingpin.Flag("config.mountpoints", "Comma separated list of mountpoints to check").Default("").String()
 	configExcludeMountpoints = kingpin.Flag("config.exclude.mountpoints", "Regex of mountpoints to exclude").Default(defExcludeMountpoints).String()
 	configExcludeFSTypes     = kingpin.Flag("config.exclude.fs-types", "Regex of filesystem types to exclude").Default(defExcludeFSTypes).String()
-	pathProcMounts           = kingpin.Flag("path.procmounts", "Path to /proc/mounts").Default(defProcMounts).String()
-	pathFstabPath            = kingpin.Flag("path.fstab", "Path to /etc/fstab").Default(defFstabPath).String()
+	rootfsPath               = kingpin.Flag("path.rootfs", "Path to root filesystem").Default(defRootfs).String()
 	listenAddress            = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
 )
 
@@ -76,6 +75,17 @@ func sliceContains(slice []string, str string) bool {
 	return false
 }
 
+func rootfsStripPrefix(path string) string {
+	if *rootfsPath == "/" {
+		return path
+	}
+	stripped := strings.TrimPrefix(path, *rootfsPath)
+	if stripped == "" {
+		return "/"
+	}
+	return stripped
+}
+
 func NewExporter(mountpoints []string) *Exporter {
 	excludeMountpointsPattern := regexp.MustCompile(*configExcludeMountpoints)
 	excludeFSTypesPattern := regexp.MustCompile(*configExcludeFSTypes)
@@ -90,10 +100,11 @@ func NewExporter(mountpoints []string) *Exporter {
 
 func (e *Exporter) ParseFSTab() ([]string, error) {
 	var mountpoints []string
-	if exists := fileExists(*pathFstabPath); !exists {
-		return nil, fmt.Errorf("%s does not exist", *pathFstabPath)
+	fstabPath := filepath.Join(*rootfsPath, "etc/fstab")
+	if exists := fileExists(fstabPath); !exists {
+		return nil, fmt.Errorf("%s does not exist", fstabPath)
 	}
-	mounts, err := fstab.ParseFile(*pathFstabPath)
+	mounts, err := fstab.ParseFile(fstabPath)
 	if err != nil {
 		return nil, err
 	}
@@ -114,22 +125,26 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 	var metrics []CheckMountMetric
 	if e.mountpoints == nil {
 		if mountpoints, err := e.ParseFSTab(); err != nil {
-			return nil, fmt.Errorf("Unable to load from fstab at %s: %s", *pathFstabPath, err.Error())
+			return nil, fmt.Errorf("Unable to load from fstab: %s", err.Error())
 		} else {
 			e.mountpoints = mountpoints
 		}
 	}
 	log.Debugf("Collecting mountpoints: %v", e.mountpoints)
-	mounts, err := linuxproc.ReadMounts(*pathProcMounts)
+	procMounts := filepath.Join(*rootfsPath, "proc/mounts")
+	log.Debugf("Parsing /proc/mounts from %s", procMounts)
+	mounts, err := linuxproc.ReadMounts(procMounts)
 	if err != nil {
 		return nil, err
 	}
 	for _, mount := range mounts.Mounts {
-		mountpoints = append(mountpoints, mount.MountPoint)
+		mountpoint := rootfsStripPrefix(mount.MountPoint)
+		log.Debugf("Found mount %s", mountpoint)
+		mountpoints = append(mountpoints, mountpoint)
 		if strings.Contains(mount.Options, "rw,") {
-			mountpointsRW = append(mountpointsRW, mount.MountPoint)
+			mountpointsRW = append(mountpointsRW, mountpoint)
 		} else if strings.Contains(mount.Options, "ro,") {
-			mountpointsRO = append(mountpointsRO, mount.MountPoint)
+			mountpointsRO = append(mountpointsRO, mountpoint)
 		}
 	}
 	for _, m := range e.mountpoints {

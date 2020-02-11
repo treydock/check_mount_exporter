@@ -16,6 +16,7 @@ package main
 import (
 	"github.com/Flaque/filet"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
+	"os"
 	"testing"
 )
 
@@ -23,14 +24,18 @@ func TestCollect(t *testing.T) {
 	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
 		t.Fatal(err)
 	}
-	procMounts := "/tmp/proc-mounts"
-	pathProcMounts = &procMounts
+	rootfsPathTmp := os.TempDir()
+	proc := rootfsPathTmp + "/proc"
+	os.MkdirAll(proc, 0755)
+	mounts := proc + "/mounts"
+	defer os.RemoveAll(rootfsPathTmp)
+	rootfsPath = &rootfsPathTmp
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_home /home ext4 ro,noatime 0 0
 /dev/mapper/vg-lv_var /var ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_tmp /tmp ext4 rw,noatime 0 0
 `
-	filet.File(t, "/tmp/proc-mounts", mockedProcMounts)
+	filet.File(t, mounts, mockedProcMounts)
 	defer filet.CleanUp(t)
 	exporter := NewExporter([]string{"/var", "/home", "/dne"})
 	metrics, err := exporter.collect()
@@ -65,8 +70,12 @@ func TestParseFSTab(t *testing.T) {
 	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
 		t.Fatal(err)
 	}
-	fstabPath := "/tmp/fstab"
-	pathFstabPath = &fstabPath
+	rootfsPathTmp := os.TempDir()
+	defer os.RemoveAll(rootfsPathTmp)
+	etc := rootfsPathTmp + "/etc"
+	fstabPath := etc + "/fstab"
+	os.MkdirAll(etc, 0755)
+	rootfsPath = &rootfsPathTmp
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
 LABEL=swap      swap    swap    defaults        0       0
 PARTUUID=6c586e13-01  /boot           ext3    defaults          0       2
@@ -76,7 +85,7 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 /dev/vg/lv_home      /home           ext4    defaults,noatime 0 0
 /dev/vg/lv_tmp       /tmp            ext4    defaults,noatime 0 0
 `
-	filet.File(t, "/tmp/fstab", mocked_fstab)
+	filet.File(t, fstabPath, mocked_fstab)
 	defer filet.CleanUp(t)
 	exporter := NewExporter(nil)
 	mountpoints, err := exporter.ParseFSTab()
