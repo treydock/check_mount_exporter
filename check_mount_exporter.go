@@ -42,6 +42,7 @@ var (
 	configExcludeFSTypes     = kingpin.Flag("config.exclude.fs-types", "Regex of filesystem types to exclude").Default(defExcludeFSTypes).String()
 	rootfsPath               = kingpin.Flag("path.rootfs", "Path to root filesystem").Default(defRootfs).String()
 	listenAddress            = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9304").String()
+	disableExporterMetrics   = kingpin.Flag("web.disable-exporter-metrics", "Exclude metrics about the exporter (promhttp_*, process_*, go_*)").Default("false").Bool()
 )
 
 type CheckMountMetric struct {
@@ -186,6 +187,29 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+func metricsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		registry := prometheus.NewRegistry()
+
+		var mountpoints []string
+		if *configMountpoints != "" {
+			mountpoints = strings.Split(*configMountpoints, ",")
+		}
+
+		exporter := NewExporter(mountpoints)
+		registry.MustRegister(exporter)
+
+		gatherers := prometheus.Gatherers{registry}
+		if !*disableExporterMetrics {
+			gatherers = append(gatherers, prometheus.DefaultGatherer)
+		}
+
+		// Delegate http serving to Prometheus client library, which will call collector.Collect.
+		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
+		h.ServeHTTP(w, r)
+	}
+}
+
 func main() {
 	metricsEndpoint := "/metrics"
 	log.AddFlags(kingpin.CommandLine)
@@ -197,14 +221,6 @@ func main() {
 	log.Infoln("Build context", version.BuildContext())
 	log.Infoln("Starting Server:", *listenAddress)
 
-	var mountpoints []string
-	if *configMountpoints != "" {
-		mountpoints = strings.Split(*configMountpoints, ",")
-	}
-
-	exporter := NewExporter(mountpoints)
-	prometheus.MustRegister(exporter)
-
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//nolint:errcheck
 		w.Write([]byte(`<html>
@@ -215,6 +231,6 @@ func main() {
              </body>
              </html>`))
 	})
-	http.Handle(metricsEndpoint, promhttp.Handler())
+	http.Handle(metricsEndpoint, metricsHandler())
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 }
