@@ -26,15 +26,18 @@ func TestCollect(t *testing.T) {
 	}
 	rootfsPathTmp := os.TempDir()
 	proc := rootfsPathTmp + "/proc"
-	os.MkdirAll(proc, 0755)
 	mounts := proc + "/mounts"
-	defer os.RemoveAll(rootfsPathTmp)
 	rootfsPath = &rootfsPathTmp
 	mockedProcMounts := `/dev/root / ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_home /home ext4 ro,noatime 0 0
 /dev/mapper/vg-lv_var /var ext4 rw,noatime 0 0
 /dev/mapper/vg-lv_tmp /tmp ext4 rw,noatime 0 0
 `
+	err := os.MkdirAll(proc, 0755)
+	if err != nil {
+		t.Fatalf("MkdirAll %s: %s", proc, err)
+	}
+	defer os.RemoveAll(rootfsPathTmp)
 	filet.File(t, mounts, mockedProcMounts)
 	defer filet.CleanUp(t)
 	exporter := NewExporter([]string{"/var", "/home", "/dne"})
@@ -71,10 +74,8 @@ func TestParseFSTab(t *testing.T) {
 		t.Fatal(err)
 	}
 	rootfsPathTmp := os.TempDir()
-	defer os.RemoveAll(rootfsPathTmp)
 	etc := rootfsPathTmp + "/etc"
 	fstabPath := etc + "/fstab"
-	os.MkdirAll(etc, 0755)
 	rootfsPath = &rootfsPathTmp
 	mocked_fstab := `proc            /proc           proc    defaults          0       0
 LABEL=swap      swap    swap    defaults        0       0
@@ -85,6 +86,11 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 /dev/vg/lv_home      /home           ext4    defaults,noatime 0 0
 /dev/vg/lv_tmp       /tmp            ext4    defaults,noatime 0 0
 `
+	err := os.MkdirAll(etc, 0755)
+	if err != nil {
+		t.Fatalf("MkdirAll %s: %s", etc, err)
+	}
+	defer os.RemoveAll(rootfsPathTmp)
 	filet.File(t, fstabPath, mocked_fstab)
 	defer filet.CleanUp(t)
 	exporter := NewExporter(nil)
