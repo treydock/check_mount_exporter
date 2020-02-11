@@ -10,6 +10,16 @@ The `check_mount_exporter` produces metrics about mount points mount status and 
 
 This exporter by default listens on port `9304` and all metrics are exposed via the `/metrics` endpoint.
 
+Example of metrics exposed by this exporter:
+
+```
+check_mount_status{mountpoint="/",rw="rw"} 1
+check_mount_status{mountpoint="/boot",rw="rw"} 1
+check_mount_status{mountpoint="/opt",rw="rw"} 1
+check_mount_status{mountpoint="/tmp",rw="rw"} 1
+check_mount_status{mountpoint="/var",rw="rw"} 1
+```
+
 # Usage
 
 If the exporter is launched without `--config.mountpoints` then `/etc/fstab` will be parsed to identify which mountpoints to produce metrics for.
