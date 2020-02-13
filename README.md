@@ -42,7 +42,7 @@ Download the [latest release](https://github.com/treydock/check_mount_exporter/r
 
 ## Build from source
 
-To produce the `check_mount_exporter` and `check_mount_mmdf_exporter` binaries:
+To produce the `check_mount_exporter` binary:
 
 ```
 make build
