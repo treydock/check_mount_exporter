@@ -1,10 +1,6 @@
-FROM golang:1.13 AS builder
-RUN mkdir /build
-ADD . /build/
-WORKDIR /build
-RUN make build
-
 FROM scratch
-WORKDIR /
-COPY --from=builder /build/check_mount_exporter /check_mount_exporter
+ARG ARCH="amd64"
+ARG OS="linux"
+COPY .build/${OS}-${ARCH}/check_mount_exporter /check_mount_exporter
+EXPOSE 9304
 ENTRYPOINT ["/check_mount_exporter"]
