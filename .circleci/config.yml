@@ -2,8 +2,8 @@
 version: 2.1
 
 orbs:
-  prometheus: prometheus/prometheus@0.4.0
-  codecov: codecov/codecov@1.0.5
+  prometheus: prometheus/prometheus@0.15.0
+  codecov: codecov/codecov@3.2.2
 
 executors:
   # Whenever the Go version is updated here, .promu.yml should
@@ -25,7 +25,7 @@ jobs:
         file: check_mount_exporter
   build:
     machine:
-      image: ubuntu-1604:201903-01
+      image: ubuntu-2004:202201-02
     steps:
     - checkout
     - run: make promu
@@ -44,30 +44,6 @@ jobs:
           else
             make docker
           fi
-  publish_master:
-    executor: golang
-    steps:
-    - prometheus/setup_build_environment
-    - prometheus/publish_images:
-        login_variable: DOCKER_LOGIN
-        organization: treydock
-        password_variable: DOCKER_PASSWORD
-        registry: docker.io
-  publish_release:
-    executor: golang
-    steps:
-    - prometheus/setup_build_environment
-    - run: promu crossbuild tarballs
-    - run: promu checksum .tarballs
-    - run: promu release .tarballs
-    - store_artifacts:
-        destination: releases
-        path: .tarballs
-    - prometheus/publish_release_images:
-        login_variable: DOCKER_LOGIN
-        organization: treydock
-        password_variable: DOCKER_PASSWORD
-        registry: docker.io
 workflows:
   version: 2
   check_mount_exporter:
@@ -80,16 +56,20 @@ workflows:
         filters:
           tags:
             only: /.*/
-    - publish_master:
+    - prometheus/publish_master:
         context: org-context
+        docker_hub_organization: treydock
+        quay_io_organization: treydock
         requires:
         - test
         - build
         filters:
           branches:
             only: master
-    - publish_release:
+    - prometheus/publish_release:
         context: org-context
+        docker_hub_organization: treydock
+        quay_io_organization: treydock
         requires:
         - test
         - build
