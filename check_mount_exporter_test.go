@@ -15,14 +15,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/prometheus/common/log"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-kit/log"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -31,8 +32,13 @@ const (
 
 func TestMain(m *testing.M) {
 	go func() {
-		http.Handle("/metrics", metricsHandler())
-		log.Fatal(http.ListenAndServe(address, nil))
+		w := log.NewSyncWriter(os.Stderr)
+		logger := log.NewLogfmtLogger(w)
+		http.Handle("/metrics", metricsHandler(logger))
+		err := http.ListenAndServe(address, nil)
+		if err != nil {
+			os.Exit(1)
+		}
 	}()
 	time.Sleep(1 * time.Second)
 
@@ -64,7 +70,9 @@ func TestCollect(t *testing.T) {
 	if err := os.WriteFile(mounts, []byte(mockedProcMounts), 0644); err != nil {
 		t.Fatal(err)
 	}
-	exporter := NewExporter([]string{"/var", "/home", "/dne"})
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	exporter := NewExporter([]string{"/var", "/home", "/dne"}, logger)
 	metrics, err := exporter.collect()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -120,7 +128,9 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 	if err := os.WriteFile(fstab, []byte(mocked_fstab), 0644); err != nil {
 		t.Fatal(err)
 	}
-	exporter := NewExporter(nil)
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	exporter := NewExporter(nil, logger)
 	mountpoints, err := exporter.ParseFSTab()
 	if err != nil {
 		t.Errorf("Unexpected error: %s", err.Error())
@@ -132,7 +142,6 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 }
 
 func TestMetricsHandler(t *testing.T) {
-	_ = log.Base().SetLevel("debug")
 	rootfsPathTmp, err := os.MkdirTemp(os.TempDir(), "check_mounts")
 	if err != nil {
 		t.Fatal(err)
