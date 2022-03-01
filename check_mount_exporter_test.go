@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"github.com/prometheus/common/log"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -45,7 +45,7 @@ func TestCollect(t *testing.T) {
 	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
 		t.Fatal(err)
 	}
-	rootfsPathTmp, err := ioutil.TempDir(os.TempDir(), "check_mounts")
+	rootfsPathTmp, err := os.MkdirTemp(os.TempDir(), "check_mounts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestCollect(t *testing.T) {
 		t.Fatalf("MkdirAll %s: %s", proc, err)
 	}
 	mounts := proc + "/mounts"
-	if err := ioutil.WriteFile(mounts, []byte(mockedProcMounts), 0644); err != nil {
+	if err := os.WriteFile(mounts, []byte(mockedProcMounts), 0644); err != nil {
 		t.Fatal(err)
 	}
 	exporter := NewExporter([]string{"/var", "/home", "/dne"})
@@ -97,7 +97,7 @@ func TestParseFSTab(t *testing.T) {
 	if _, err := kingpin.CommandLine.Parse([]string{}); err != nil {
 		t.Fatal(err)
 	}
-	rootfsPathTmp, err := ioutil.TempDir(os.TempDir(), "check_mounts")
+	rootfsPathTmp, err := os.MkdirTemp(os.TempDir(), "check_mounts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 		t.Fatalf("MkdirAll %s: %s", etc, err)
 	}
 	fstab := etc + "/fstab"
-	if err := ioutil.WriteFile(fstab, []byte(mocked_fstab), 0644); err != nil {
+	if err := os.WriteFile(fstab, []byte(mocked_fstab), 0644); err != nil {
 		t.Fatal(err)
 	}
 	exporter := NewExporter(nil)
@@ -133,7 +133,7 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 
 func TestMetricsHandler(t *testing.T) {
 	_ = log.Base().SetLevel("debug")
-	rootfsPathTmp, err := ioutil.TempDir(os.TempDir(), "check_mounts")
+	rootfsPathTmp, err := os.MkdirTemp(os.TempDir(), "check_mounts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,10 +163,10 @@ PARTUUID=6c586e13-02  /               ext4    defaults,noatime  0       1
 	}
 	fstab := etc + "/fstab"
 	mounts := proc + "/mounts"
-	if err := ioutil.WriteFile(mounts, []byte(mockedProcMounts), 0644); err != nil {
+	if err := os.WriteFile(mounts, []byte(mockedProcMounts), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ioutil.WriteFile(fstab, []byte(mocked_fstab), 0644); err != nil {
+	if err := os.WriteFile(fstab, []byte(mocked_fstab), 0644); err != nil {
 		t.Fatal(err)
 	}
 	body, err := queryExporter()
@@ -183,7 +183,7 @@ func queryExporter() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
