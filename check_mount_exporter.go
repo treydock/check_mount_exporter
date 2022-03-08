@@ -23,9 +23,12 @@ import (
 
 	linuxproc "github.com/c9s/goprocinfo/linux"
 	fstab "github.com/deniswernert/go-fstab"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/common/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
@@ -57,6 +60,7 @@ type Exporter struct {
 	excludeFSTypesPattern     *regexp.Regexp
 	status                    *prometheus.Desc
 	success                   *prometheus.Desc
+	logger                    log.Logger
 }
 
 func fileExists(filename string) bool {
@@ -87,7 +91,7 @@ func rootfsStripPrefix(path string) string {
 	return stripped
 }
 
-func NewExporter(mountpoints []string) *Exporter {
+func NewExporter(mountpoints []string, logger log.Logger) *Exporter {
 	excludeMountpointsPattern := regexp.MustCompile(*configExcludeMountpoints)
 	excludeFSTypesPattern := regexp.MustCompile(*configExcludeFSTypes)
 	return &Exporter{
@@ -96,6 +100,7 @@ func NewExporter(mountpoints []string) *Exporter {
 		excludeFSTypesPattern:     excludeFSTypesPattern,
 		status:                    prometheus.NewDesc("check_mount_status", "Mount point status, 1=mounted 0=not mounted", []string{"mountpoint", "rw"}, nil),
 		success:                   prometheus.NewDesc("check_mount_success", "Exporter status, 1=successful 0=errors", nil, nil),
+		logger:                    logger,
 	}
 }
 
@@ -111,7 +116,7 @@ func (e *Exporter) ParseFSTab() ([]string, error) {
 	}
 	for _, m := range mounts {
 		if e.excludeMountpointsPattern.MatchString(m.File) || e.excludeFSTypesPattern.MatchString(m.VfsType) {
-			log.Debugf("Ignoring mount point %s", m.File)
+			level.Debug(e.logger).Log("msg", "Ignoring mount point", "mountpoint", m.File)
 			continue
 		}
 		mountpoints = append(mountpoints, m.File)
@@ -131,16 +136,16 @@ func (e *Exporter) collect() ([]CheckMountMetric, error) {
 			e.mountpoints = mountpoints
 		}
 	}
-	log.Debugf("Collecting mountpoints: %v", e.mountpoints)
+	level.Debug(e.logger).Log("msg", "Collecting mountpoints", "mountpoints", e.mountpoints)
 	procMounts := filepath.Join(*rootfsPath, "proc/mounts")
-	log.Debugf("Parsing /proc/mounts from %s", procMounts)
+	level.Debug(e.logger).Log("msg", "Parsing /proc/mounts", "path", procMounts)
 	mounts, err := linuxproc.ReadMounts(procMounts)
 	if err != nil {
 		return nil, err
 	}
 	for _, mount := range mounts.Mounts {
 		mountpoint := rootfsStripPrefix(mount.MountPoint)
-		log.Debugf("Found mount %s", mountpoint)
+		level.Debug(e.logger).Log("msg", "Found mount", "mount", mountpoint)
 		mountpoints = append(mountpoints, mountpoint)
 		if strings.Contains(mount.Options, "rw,") {
 			mountpointsRW = append(mountpointsRW, mountpoint)
@@ -187,7 +192,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
-func metricsHandler() http.HandlerFunc {
+func metricsHandler(logger log.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		registry := prometheus.NewRegistry()
 
@@ -196,7 +201,7 @@ func metricsHandler() http.HandlerFunc {
 			mountpoints = strings.Split(*configMountpoints, ",")
 		}
 
-		exporter := NewExporter(mountpoints)
+		exporter := NewExporter(mountpoints, logger)
 		registry.MustRegister(exporter)
 
 		gatherers := prometheus.Gatherers{registry}
@@ -212,14 +217,17 @@ func metricsHandler() http.HandlerFunc {
 
 func main() {
 	metricsEndpoint := "/metrics"
-	log.AddFlags(kingpin.CommandLine)
+	promlogConfig := &promlog.Config{}
+	flag.AddFlags(kingpin.CommandLine, promlogConfig)
 	kingpin.Version(version.Print("check_mount_exporter"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	log.Infoln("Starting check_mount_exporter", version.Info())
-	log.Infoln("Build context", version.BuildContext())
-	log.Infoln("Starting Server:", *listenAddress)
+	logger := promlog.New(promlogConfig)
+
+	level.Info(logger).Log("msg", "Starting check_mount_exporter", "version", version.Info())
+	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
+	level.Info(logger).Log("msg", "Starting Server", "address", *listenAddress)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//nolint:errcheck
@@ -231,6 +239,10 @@ func main() {
              </body>
              </html>`))
 	})
-	http.Handle(metricsEndpoint, metricsHandler())
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
+	http.Handle(metricsEndpoint, metricsHandler(logger))
+	err := http.ListenAndServe(*listenAddress, nil)
+	if err != nil {
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
+	}
 }
