@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
+	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/log"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -31,9 +31,9 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
 	go func() {
-		w := log.NewSyncWriter(os.Stderr)
-		logger := log.NewLogfmtLogger(w)
 		http.Handle("/metrics", metricsHandler(logger))
 		err := http.ListenAndServe(address, nil)
 		if err != nil {
